@@ -95,17 +95,15 @@ export const useChat = (currentUser: User | null, isThinkingModeEnabled: boolean
 
     useEffect(() => {
         if (currentUser?.username) {
-            const unsubscribe = firebaseService.listenForBroadcasts(currentUser.username, (broadcastMessage) => {
-                if (broadcastMessage) {
-                    setMessages(prev => {
-                        // Remove any existing broadcast message, then add the new one.
-                        const otherMessages = prev.filter(msg => msg.type !== 'broadcast');
-                        return [...otherMessages, broadcastMessage];
-                    });
-                } else {
-                    // This is called when the broadcast is deleted from the DB
-                    setMessages(prev => prev.filter(msg => msg.type !== 'broadcast'));
-                }
+            const unsubscribe = firebaseService.listenForBroadcasts((activeBroadcasts) => {
+                setMessages(prev => {
+                    // Filter out existing broadcasts to avoid duplicates or stale data
+                    const nonBroadcastMessages = prev.filter(msg => msg.type !== 'broadcast');
+                    // Combine with the new list of active broadcasts
+                    const combinedMessages = [...nonBroadcastMessages, ...activeBroadcasts];
+                    // Ensure chronological order
+                    return combinedMessages.sort((a, b) => a.timestamp - b.timestamp);
+                });
             });
             return () => unsubscribe();
         }

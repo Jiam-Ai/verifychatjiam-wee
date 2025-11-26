@@ -93,30 +93,26 @@ export const firebaseService = {
   },
   sendBroadcast: (message: string) => {
     const broadcast = { text: message, timestamp: Date.now() };
-    return db.ref('global/broadcast').set(broadcast);
+    return db.ref('global/broadcasts').push(broadcast);
   },
-  getBroadcast: async () => {
-    const snapshot = await db.ref('global/broadcast').get();
-    return snapshot.val();
+  deleteBroadcast: (id: string) => {
+    return db.ref(`global/broadcasts/${id}`).remove();
   },
-  deleteBroadcast: () => {
-    return db.ref('global/broadcast').remove();
-  },
-  listenForBroadcasts: (username: string, callback: (message: ChatMessage | null) => void) => {
-    const ref = db.ref('global/broadcast');
+  listenForBroadcasts: (callback: (broadcasts: ChatMessage[]) => void) => {
+    const ref = db.ref('global/broadcasts');
     const listener = ref.on('value', (snapshot) => {
-        const broadcast = snapshot.val();
-        if (broadcast) {
-            callback({
-                id: `broadcast-${broadcast.timestamp}`,
-                type: 'broadcast',
-                sender: 'jiam',
-                content: broadcast.text,
-                timestamp: broadcast.timestamp,
-            });
+        const val = snapshot.val();
+        if (val) {
+            const list = Object.entries(val).map(([key, data]: [string, any]) => ({
+                id: key, 
+                type: 'broadcast' as const,
+                sender: 'jiam' as const,
+                content: data.text,
+                timestamp: data.timestamp
+            }));
+            callback(list);
         } else {
-            // Signal that the broadcast was deleted
-            callback(null);
+            callback([]);
         }
     });
     return () => ref.off('value', listener);

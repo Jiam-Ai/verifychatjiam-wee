@@ -1,7 +1,6 @@
-
 import React, { useState, useEffect } from 'react';
 import { firebaseService } from '../services/firebaseService';
-import type { User } from '../types';
+import type { User, ChatMessage } from '../types';
 
 interface AdminPanelProps {
   currentUser: User;
@@ -17,9 +16,9 @@ interface PanelUser {
 
 const AdminPanel: React.FC<AdminPanelProps> = ({ currentUser, isVisible, onClose, initiateCall }) => {
   const [persona, setPersona] = useState('');
-  const [broadcast, setBroadcast] = useState('');
+  const [broadcastInput, setBroadcastInput] = useState('');
   const [users, setUsers] = useState<PanelUser[]>([]);
-  const [currentBroadcast, setCurrentBroadcast] = useState<{ text: string, timestamp: number } | null>(null);
+  const [activeBroadcasts, setActiveBroadcasts] = useState<ChatMessage[]>([]);
 
   useEffect(() => {
     let unsubscribeBroadcast: () => void = () => {};
@@ -28,12 +27,8 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ currentUser, isVisible, onClose
       firebaseService.getGlobalPersona().then(setPersona);
       
       // Use listener to get real-time updates on broadcasts
-      unsubscribeBroadcast = firebaseService.listenForBroadcasts(currentUser.username, (msg) => {
-          if (msg && typeof msg.content === 'string') {
-              setCurrentBroadcast({ text: msg.content, timestamp: msg.timestamp });
-          } else {
-              setCurrentBroadcast(null);
-          }
+      unsubscribeBroadcast = firebaseService.listenForBroadcasts((broadcasts) => {
+          setActiveBroadcasts(broadcasts);
       });
       
       const fetchUsers = async () => {
@@ -41,7 +36,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ currentUser, isVisible, onClose
               firebaseService.getAllUsers(),
               firebaseService.getRoles()
           ]);
-          // Fix: Refactor user list creation to be type-safe by ensuring only valid roles for the admin panel are included.
+          
           const userList = Object.keys(allUsers).reduce<PanelUser[]>((acc, username) => {
             if (username === currentUser.username) {
               return acc;
@@ -79,19 +74,18 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ currentUser, isVisible, onClose
   };
 
   const handleBroadcast = () => {
-    if (broadcast.trim()) {
-        firebaseService.sendBroadcast(broadcast.trim()).then(() => {
+    if (broadcastInput.trim()) {
+        firebaseService.sendBroadcast(broadcastInput.trim()).then(() => {
             alert("Broadcast sent!");
-            setBroadcast('');
+            setBroadcastInput('');
         });
     }
   };
   
-  const handleDeleteBroadcast = () => {
-      if (window.confirm("Are you sure you want to delete the current broadcast message for all users?")) {
-          firebaseService.deleteBroadcast().then(() => {
-              alert("Broadcast deleted.");
-              // Listener will update state automatically
+  const handleDeleteBroadcast = (id: string) => {
+      if (window.confirm("Are you sure you want to delete this broadcast message for all users?")) {
+          firebaseService.deleteBroadcast(id).then(() => {
+             // Listener updates UI automatically
           });
       }
   };
@@ -145,26 +139,35 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ currentUser, isVisible, onClose
             </ul>
           </div>
           <div>
-            <h3 className="font-title text-lg sm:text-xl text-[#00d9ff] border-b border-cyan-500/30 pb-2 mb-2">Broadcast Message</h3>
-            {currentBroadcast && (
-                <div className="mb-4 p-2 bg-black/40 border border-cyan-500/30 rounded-md text-xs">
-                    <p className="font-bold text-cyan-400">Current Broadcast:</p>
-                    <p className="italic text-gray-300 break-words">"{currentBroadcast.text}"</p>
-                    {(currentUser.role === 'super' || currentUser.role === 'admin') && (
-                      <button 
-                          onClick={handleDeleteBroadcast} 
-                          className="w-full mt-2 text-xs border border-red-500 text-red-500 px-2 py-1 rounded transition transform hover:scale-105 hover:bg-red-500 hover:text-white"
-                      >
-                          Delete Broadcast
-                      </button>
-                    )}
-                </div>
-            )}
+            <h3 className="font-title text-lg sm:text-xl text-[#00d9ff] border-b border-cyan-500/30 pb-2 mb-2">Active Broadcasts</h3>
+            
+            <div className="max-h-40 overflow-y-auto space-y-2 mb-4">
+                {activeBroadcasts.length === 0 ? (
+                    <p className="text-xs text-gray-500 italic p-2">No active broadcasts.</p>
+                ) : (
+                    activeBroadcasts.map(broadcast => (
+                        <div key={broadcast.id} className="p-2 bg-black/40 border border-cyan-500/30 rounded-md text-xs relative group">
+                            <p className="italic text-gray-300 break-words pr-6">"{broadcast.content as string}"</p>
+                            <div className="text-[10px] text-gray-600 mt-1">{new Date(broadcast.timestamp).toLocaleString()}</div>
+                            {(currentUser.role === 'super' || currentUser.role === 'admin') && (
+                              <button 
+                                  onClick={() => handleDeleteBroadcast(broadcast.id)} 
+                                  className="absolute top-1 right-1 w-5 h-5 flex items-center justify-center text-red-500 hover:text-red-300 hover:bg-red-900/50 rounded-full transition-colors"
+                                  title="Delete this broadcast"
+                              >
+                                  &times;
+                              </button>
+                            )}
+                        </div>
+                    ))
+                )}
+            </div>
+
             <textarea
-                value={broadcast}
-                onChange={(e) => setBroadcast(e.target.value)}
+                value={broadcastInput}
+                onChange={(e) => setBroadcastInput(e.target.value)}
                 rows={3}
-                placeholder="Type a message to send or update..."
+                placeholder="Type a message to broadcast..."
                 className="w-full bg-black/50 border border-[#00d9ff] rounded-md p-2 resize-none outline-none focus:ring-2 focus:ring-[#00d9ff]"
             />
             <button onClick={handleBroadcast} className="w-full mt-2 p-3 bg-[#00d9ff] text-black rounded-md font-title transition hover:brightness-110 transform hover:scale-105">Send Broadcast</button>
